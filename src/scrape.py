@@ -1,144 +1,151 @@
-import hydra
+import logging
+
 from selenium import webdriver
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+    WebDriverException,
+)
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
-from src.schemas.scraper_schema import WebScraper
+from src.config.app_settings import settings
+from src.config.book_config import book_settings
 
-#
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
-@hydra.main(version_base=None, config_path="../conf", config_name="scrapping")
-def get_books(cfg: WebScraper) -> None:
+
+def setup_driver() -> webdriver.Chrome:
+    """Set up and configure the Chrome WebDriver."""
     options = webdriver.ChromeOptions()
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--start-maximized")
+    options.add_argument(f"user-agent={settings.headers.user_agent}")
+    return webdriver.Chrome(options=options)
 
-    # Add user agent from config
-    options.add_argument(f"user-agent={cfg.settings.headers['User-Agent']}")
-    # Create a new driver instance with options
-    driver = webdriver.Chrome(options=options)
+
+def extract_element_text(element: WebElement | None, default: str = "Not found") -> str:
+    """Extract text from element with fallback."""
+    return element.text if element else default
+
+
+def get_product_details(
+        cell: WebElement,
+        book_settings: dict,
+) -> dict | None:
+    """Extract product details from a cell."""
+    details = {}
+
     try:
-        # Open books
-        driver.get(cfg.settings.urls["books"])
+        title_element = cell.find_element(
+            By.CLASS_NAME, book_settings.elements["title"],
+        )
+        details["title"] = extract_element_text(title_element, "No title found")
 
-        # Wait for the page to load and for elements to be present
-        wait = WebDriverWait(driver, 180)
+        author_element = cell.find_element(
+            By.CLASS_NAME, book_settings.elements["author"],
+        )
+        details["author"] = extract_element_text(author_element, "No author found")
 
-        # Find all product cards
-        cells = wait.until(
-            EC.presence_of_all_elements_located(
-                (By.CLASS_NAME, "product-card")
-            )
+        price_element = cell.find_element(
+            By.CLASS_NAME, book_settings.elements["current_price"],
+        )
+        details["current_price"] = extract_element_text(
+            price_element, "No price found",
         )
 
-        print(f"Found {len(cells)} product cells")
+        try:
+            list_price_element = cell.find_element(
+                By.CLASS_NAME, book_settings.elements["list_price"],
+            )
+            details["list_price"] = extract_element_text(
+                list_price_element, "No list price",
+            )
+        except NoSuchElementException:
+            details["list_price"] = "No list price"
 
-        # Process each cell
+        try:
+            discount_element = cell.find_element(
+                By.CLASS_NAME, book_settings.elements["discount"],
+            )
+            details["discount"] = extract_element_text(
+                discount_element, "No discount",
+            )
+        except NoSuchElementException:
+            details["discount"] = "No discount"
+
+        # Get rating and review count
+        try:
+            rating_element = cell.find_element(
+                By.CLASS_NAME, book_settings.elements["container"],
+            )
+            details["rating"] = rating_element.find_element(
+                By.CLASS_NAME, book_settings.elements["score"],
+            ).text
+            details["review_count"] = rating_element.find_element(
+                By.CLASS_NAME, book_settings.elements["review_count"],
+            ).text
+        except NoSuchElementException:
+            details["rating"] = "No rating"
+            details["review_count"] = "No reviews"
+
+        # Get stock information
+        try:
+            details["stock_status"] = cell.find_element(
+                By.CLASS_NAME, book_settings.elements["status_availability"],
+            ).text
+            stock_pills = cell.find_elements(
+                By.CLASS_NAME, book_settings.elements["locations"],
+            )
+            details["stock_locations"] = [pill.text for pill in stock_pills]
+        except NoSuchElementException:
+            details["stock_status"] = "Stock status unknown"
+            details["stock_locations"] = []
+
+    except NoSuchElementException as e:
+        logger.exception("Failed to extract product details", exc_info=e)
+        return None
+
+    return details
+
+
+def get_books() -> None:
+    """Scrape book information from Takealot."""
+    driver = None
+    try:
+        driver = setup_driver()
+        driver.get(book_settings.urls["books"])
+
+        wait = WebDriverWait(driver, 180)
+        cells = wait.until(
+            ec.presence_of_all_elements_located(
+                (By.CLASS_NAME, book_settings.elements["product_card"]),
+            ),
+        )
+
+        logger.info("Found %d product cells", len(cells))
+
         for index, cell in enumerate(cells, 1):
-            print(f"\n{'=' * 50}")
-            print(f"Product {index}:")
-            print(f"{'=' * 50}")
+            logger.info("Processing product %d", index)
+            details = get_product_details(cell, book_settings)
 
-            try:
-                # Get product title
-                title_element = cell.find_element(
-                    By.CLASS_NAME, "product-card-module_product-title_16xh8"
-                )
-                title = (
-                    title_element.text if title_element else "No title found"
-                )
+            if details:
+                logger.info("Product Details:")
+                for key, value in details.items():
+                    logger.info("%s: %s", key, value)
+                logger.info("-" * 50)
 
-                # Get author name
-                author_element = cell.find_element(By.CLASS_NAME, "authors")
-                author = (
-                    author_element.text
-                    if author_element
-                    else "No author found"
-                )
-
-                # Get current price
-                price_element = cell.find_element(
-                    By.CLASS_NAME,
-                    "accessible-text-module_accessible-text_11WAe",
-                )
-                current_price = (
-                    price_element.text if price_element else "No price found"
-                )
-
-                # Get list price (if available)
-                try:
-                    list_price_element = cell.find_element(
-                        By.CLASS_NAME,
-                        "product-card-price-module_list-price_om_3Y",
-                    )
-                    list_price = (
-                        list_price_element.text
-                        if list_price_element
-                        else "No list price"
-                    )
-                except:
-                    list_price = "No list price"
-
-                # Get discount percentage (if available)
-                try:
-                    discount_element = cell.find_element(
-                        By.CLASS_NAME, "badge.saving"
-                    )
-                    discount = (
-                        discount_element.text
-                        if discount_element
-                        else "No discount"
-                    )
-                except:
-                    discount = "No discount"
-
-                # Get rating and review count
-                try:
-                    rating_element = cell.find_element(
-                        By.CLASS_NAME, "rating-module_rating_1rLjy"
-                    )
-                    rating = rating_element.find_element(
-                        By.CLASS_NAME, "score"
-                    ).text
-                    review_count = rating_element.find_element(
-                        By.CLASS_NAME, "rating-module_review-count_3g6zO"
-                    ).text
-                except:
-                    rating = "No rating"
-                    review_count = "No reviews"
-
-                # Get stock status
-                try:
-                    stock_status = cell.find_element(
-                        By.CLASS_NAME, "stock-availability-status"
-                    ).text
-
-                    # Get stock locations
-                    stock_pills = cell.find_elements(
-                        By.CLASS_NAME, "stock-pill-text"
-                    )
-                    stock_locations = [pill.text for pill in stock_pills]
-                except:
-                    stock_status = "Stock status unknown"
-                    stock_locations = []
-
-                print(f"Title: {title}")
-                print(f"Author: {author}")
-                print(f"Current Price: {current_price}")
-                print(f"List Price: {list_price}")
-                print(f"Discount: {discount}")
-                print(f"Rating: {rating}")
-                print(f"Reviews: {review_count}")
-                print(f"Stock Status: {stock_status}")
-                print(f"Available at: {', '.join(stock_locations)}")
-
-            except Exception as e:
-                print(f"Error extracting data: {str(e)}")
-
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-
+    except TimeoutException:
+        logger.exception("Timed out waiting for page to load")
+    except WebDriverException as e:
+        logger.exception("WebDriver error occurred", exc_info=e)
     finally:
-        # Close the browser
-        driver.quit()
+        if driver:
+            driver.quit()

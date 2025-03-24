@@ -1,0 +1,18 @@
+defaults:
+  - _self_
+
+urls:
+  books: "https://www.takealot.com/all?custom=new-to-tal-book"
+
+elements:
+  product_card: "product-card"
+  title: "product-card-module_product-title_16xh8"
+  author: "authors"
+  current_price: "accessible-text-module_accessible-text_11WAe"
+  list_price: "product-card-price-module_list-price_om_3Y"
+  discount: "badge.saving"
+  container: "rating-module_rating_1rLjy"
+  score: "score"
+  review_count: "rating-module_review-count_3g6zO"
+  status_availability: "stock-availability-status"
+  locations: "stock-pill-text"
