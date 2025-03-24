@@ -1,6 +1,6 @@
-# Recommender
+# Product Recommender
 
-Python project managed with [uv](https://docs.astral.sh/uv/) and [Hydra](https://hydra.cc/).
+A recommendation engine that suggests products based on Takealot's product catalog. Built with Python and managed using [uv](https://docs.astral.sh/uv/) and [Hydra](https://hydra.cc/).
 
 ## Usage
 
@@ -17,5 +17,5 @@ uv run main.py param=value
 ```
 .
 ├── conf/    # configs
-├── src/     # source
+├── src/     # source code for the recommendation engine
 ```
