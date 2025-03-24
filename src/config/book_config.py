@@ -13,4 +13,4 @@ def load_config() -> BookSettings:
         return BookSettings(urls=cfg.urls, elements=cfg.elements)
 
 
-book_settings = load_config()
+book_settings: BookSettings = load_config()

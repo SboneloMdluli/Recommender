@@ -1,5 +1,3 @@
-import logging
-
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoSuchElementException,
@@ -13,13 +11,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from src.config.app_settings import settings
 from src.config.book_config import book_settings
+from src.utils.logging import logger, setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Set up logging
+setup_logging()
 
 
 def setup_driver() -> webdriver.Chrome:
@@ -39,44 +34,53 @@ def extract_element_text(element: WebElement | None, default: str = "Not found")
 def get_product_details(
         cell: WebElement,
         book_settings: dict,
-) -> dict | None:
+) -> dict[str, str | list[str]] | None:
     """Extract product details from a cell."""
-    details = {}
+    details: dict[str, str | list[str]] = {}
 
     try:
+        # Get basic details first
         title_element = cell.find_element(
-            By.CLASS_NAME, book_settings.elements["title"],
+            By.CLASS_NAME,
+            book_settings.elements["title"],
         )
         details["title"] = extract_element_text(title_element, "No title found")
 
         author_element = cell.find_element(
-            By.CLASS_NAME, book_settings.elements["author"],
+            By.CLASS_NAME,
+            book_settings.elements["author"],
         )
         details["author"] = extract_element_text(author_element, "No author found")
 
         price_element = cell.find_element(
-            By.CLASS_NAME, book_settings.elements["current_price"],
+            By.CLASS_NAME,
+            book_settings.elements["current_price"],
         )
         details["current_price"] = extract_element_text(
-            price_element, "No price found",
+            price_element,
+            "No price found",
         )
 
         try:
             list_price_element = cell.find_element(
-                By.CLASS_NAME, book_settings.elements["list_price"],
+                By.CLASS_NAME,
+                book_settings.elements["list_price"],
             )
             details["list_price"] = extract_element_text(
-                list_price_element, "No list price",
+                list_price_element,
+                "No list price",
             )
         except NoSuchElementException:
             details["list_price"] = "No list price"
 
         try:
             discount_element = cell.find_element(
-                By.CLASS_NAME, book_settings.elements["discount"],
+                By.CLASS_NAME,
+                book_settings.elements["discount"],
             )
             details["discount"] = extract_element_text(
-                discount_element, "No discount",
+                discount_element,
+                "No discount",
             )
         except NoSuchElementException:
             details["discount"] = "No discount"
@@ -84,13 +88,16 @@ def get_product_details(
         # Get rating and review count
         try:
             rating_element = cell.find_element(
-                By.CLASS_NAME, book_settings.elements["container"],
+                By.CLASS_NAME,
+                book_settings.elements["container"],
             )
             details["rating"] = rating_element.find_element(
-                By.CLASS_NAME, book_settings.elements["score"],
+                By.CLASS_NAME,
+                book_settings.elements["score"],
             ).text
             details["review_count"] = rating_element.find_element(
-                By.CLASS_NAME, book_settings.elements["review_count"],
+                By.CLASS_NAME,
+                book_settings.elements["review_count"],
             ).text
         except NoSuchElementException:
             details["rating"] = "No rating"
@@ -99,15 +106,26 @@ def get_product_details(
         # Get stock information
         try:
             details["stock_status"] = cell.find_element(
-                By.CLASS_NAME, book_settings.elements["status_availability"],
+                By.CLASS_NAME,
+                book_settings.elements["status_availability"],
             ).text
             stock_pills = cell.find_elements(
-                By.CLASS_NAME, book_settings.elements["locations"],
+                By.CLASS_NAME,
+                book_settings.elements["locations"],
             )
             details["stock_locations"] = [pill.text for pill in stock_pills]
         except NoSuchElementException:
             details["stock_status"] = "Stock status unknown"
             details["stock_locations"] = []
+
+        # Find and store the product link
+        link_element = cell.find_element(
+            By.CLASS_NAME,
+            book_settings.elements["product_link"],
+        )
+
+        # Store the href for later use
+        details["product_url"] = link_element.get_attribute("href")
 
     except NoSuchElementException as e:
         logger.exception("Failed to extract product details", exc_info=e)
@@ -121,7 +139,7 @@ def get_books() -> None:
     driver = None
     try:
         driver = setup_driver()
-        driver.get(book_settings.urls["books"])
+        driver.get(book_settings.urls["new_books"])
 
         wait = WebDriverWait(driver, 180)
         cells = wait.until(

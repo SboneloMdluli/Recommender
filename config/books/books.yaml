@@ -1,8 +1,5 @@
-defaults:
-  - _self_
-
 urls:
-  books: "https://www.takealot.com/all?custom=new-to-tal-book"
+  new_books: "https://www.takealot.com/all?custom=new-to-tal-book"
 
 elements:
   product_card: "product-card"
@@ -16,3 +13,5 @@ elements:
   review_count: "rating-module_review-count_3g6zO"
   status_availability: "stock-availability-status"
   locations: "stock-pill-text"
+  product_link: "product-card-module_link-underlay_3sfaA"
+  description: "product-description product-description-module_product-description_3bMdX"

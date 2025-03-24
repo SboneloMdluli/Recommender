@@ -16,4 +16,4 @@ def load_config() -> Settings:
         return Settings(headers=Headers(user_agent=cfg.headers.user_agent))
 
 
-settings = load_config()
+settings: Settings = load_config()
