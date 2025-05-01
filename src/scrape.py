@@ -31,12 +31,64 @@ def extract_element_text(element: WebElement | None, default: str = "Not found")
     return element.text if element else default
 
 
+def get_product_description(driver: webdriver.Chrome, product_url: str) -> str:
+    """Get product description from product URL."""
+    try:
+        driver.get(product_url)
+        # Wait for page to load
+        wait = WebDriverWait(driver, 5)
+
+        # Scroll down to ensure description is loaded
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+
+        # Try to find the description using the correct selector
+        try:
+            # First try to find the description container
+            description_container = wait.until(
+                ec.presence_of_element_located(
+                    (By.CSS_SELECTOR, "div[data-test='product-description']"),
+                ),
+            )
+            # Then find the actual description text
+            description_text = description_container.find_element(
+                By.CSS_SELECTOR, "div[class*='description']"
+            )
+            return description_text.text
+        except (TimeoutException, NoSuchElementException):
+            # Fallback to direct class search
+            try:
+                description_element = wait.until(
+                    ec.presence_of_element_located(
+                        (By.CSS_SELECTOR, "div[class*='description']"),
+                    ),
+                )
+                return description_element.text
+            except (TimeoutException, NoSuchElementException):
+                # Final fallback to any element containing description
+                try:
+                    description_elements = driver.find_elements(
+                        By.XPATH,
+                        "//div[contains(@class, 'description') or contains(text(), 'Description')]"
+                    )
+                    if description_elements:
+                        return description_elements[0].text
+                except NoSuchElementException:
+                    pass
+
+        return "No description found"
+
+    except Exception as e:
+        logger.exception("Failed to get product description", exc_info=e)
+        return "No description found"
+
+
 def get_product_details(
         cell: WebElement,
         book_settings: dict,
 ) -> dict[str, str | list[str]] | None:
     """Extract product details from a cell."""
     details: dict[str, str | list[str]] = {}
+    driver = None
 
     try:
         # Get basic details first
@@ -125,11 +177,19 @@ def get_product_details(
         )
 
         # Store the href for later use
-        details["product_url"] = link_element.get_attribute("href")
+        product_url = link_element.get_attribute("href")
+        details["product_url"] = product_url
+
+        # Get product description
+        driver = setup_driver()
+        details["description"] = get_product_description(driver, product_url)
 
     except NoSuchElementException as e:
         logger.exception("Failed to extract product details", exc_info=e)
         return None
+    finally:
+        if driver:
+            driver.quit()
 
     return details
 
